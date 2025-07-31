@@ -1,38 +1,50 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>LLM SAP Assistant</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 40px; background: #f4f4f4; }
-    #output { margin-top: 20px; white-space: pre-wrap; background: #fff; padding: 20px; border-radius: 8px; }
-  </style>
+  <meta charset="UTF-8">
+  <title>LLM SAP Assistant Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-  <h2>Ask SAP Data via LLM</h2>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center justify-center p-6">
+  <div class="bg-white shadow-xl rounded-xl w-full max-w-2xl p-8">
+    <h1 class="text-2xl font-bold mb-6 text-center text-gray-800">🔍 LLM SAP Assistant</h1>
 
-  <label for="llm">Select LLM:</label>
-  <select id="llm">
-    <option value="openai">OpenAI</option>
-    <option value="gemini">Gemini</option>
-    <option value="claude">Claude</option>
-  </select><br><br>
+    <div class="mb-4">
+      <label for="llm" class="block text-sm font-medium text-gray-700">Select LLM</label>
+      <select id="llm" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500">
+        <option value="gemini" selected>Gemini</option>
+        <option value="openai">OpenAI</option>
+        <option value="claude">Claude</option>
+      </select>
+    </div>
 
-  <label for="question">Enter your question:</label><br>
-  <input type="text" id="question" style="width: 400px;"><br><br>
+    <div class="mb-4">
+      <label for="query" class="block text-sm font-medium text-gray-700">Ask your question</label>
+      <input type="text" id="query" placeholder="e.g., What is the latest sales order status?"
+             class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 px-3 py-2" />
+    </div>
 
-  <button onclick="sendQuery()">Ask</button>
+    <div class="flex justify-center">
+      <button onclick="sendQuery()"
+              class="bg-blue-600 text-white px-5 py-2 rounded-md hover:bg-blue-700 shadow-md">
+        Ask
+      </button>
+    </div>
 
-  <div id="output"></div>
+    <div id="output" class="mt-6 bg-gray-50 border rounded-lg p-4 text-gray-800 whitespace-pre-wrap text-sm"></div>
+  </div>
 
   <script>
     async function sendQuery() {
-      const question = document.getElementById('question').value;
-      const llm = document.getElementById('llm').value;
+      const query = document.getElementById('query').value;
+      const model = document.getElementById('llm').value;
+
       const response = await fetch('/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, llm })
+        body: JSON.stringify({ query, model })
       });
+
       const data = await response.json();
       document.getElementById('output').innerText = JSON.stringify(data, null, 2);
     }
