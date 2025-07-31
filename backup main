@@ -1,0 +1,143 @@
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+import requests
+import json
+import re
+import google.generativeai as genai
+import openai
+import anthropic
+
+# === Configure API Keys ===
+GEMINI_API_KEY = "AIzaSyCYPqGe52Hzz8UI1vPh7gnFDgpFUd4QWiM"
+OPENAI_API_KEY = "your_openai_api_key"
+CLAUDE_API_KEY = "your_claude_api_key"  # Optional
+
+genai.configure(api_key=GEMINI_API_KEY)
+openai.api_key = OPENAI_API_KEY
+
+# === FastAPI App Setup ===
+app = FastAPI()
+
+# CORS Middleware (optional for frontend)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# === Northwind URL ===
+NORTHWIND_URL = "https://services.odata.org/V4/Northwind/Northwind.svc"
+
+# === Models ===
+class NaturalLanguageQuery(BaseModel):
+    prompt: str
+    llm: str = "gemini"
+
+class QueryInput(BaseModel):
+    entity: str
+    filter: str = None
+
+# === Helper: Fetch Northwind Metadata ===
+def fetch_entity_metadata(service_url):
+    metadata_url = f"{service_url}/$metadata"
+    response = requests.get(metadata_url)
+    if response.status_code != 200:
+        raise HTTPException(status_code=500, detail="Failed to fetch metadata")
+
+    metadata_xml = response.text
+    entities = re.findall(r'<EntitySet Name="(.*?)" EntityType="(.*?)"/>', metadata_xml)
+    result = {}
+    for name, full_type in entities:
+        entity_url = f"{service_url}/{name}?$top=1"
+        sample = requests.get(entity_url, headers={"Accept": "application/json"})
+        if sample.status_code == 200:
+            try:
+                props = list(sample.json()['value'][0].keys())
+                result[name] = props
+            except Exception:
+                continue
+    return result
+
+# === Helper: Run Final OData Query ===
+def run_query(query: QueryInput):
+    entity_url = f"{NORTHWIND_URL}/{query.entity}"
+    if query.filter:
+        entity_url += f"?$filter={query.filter}"
+    response = requests.get(entity_url, headers={"Accept": "application/json"})
+    if response.status_code != 200:
+        raise HTTPException(status_code=500, detail="Query failed")
+    return response.json()
+
+# === Helper: Call LLM ===
+def call_llm(llm_name, context, prompt):
+    full_prompt = f"""
+You are a helpful assistant that converts natural language questions into OData query JSON.
+
+## MCP CONTEXT ##
+{context}
+
+User Query: {prompt}
+
+Return JSON only in the format:
+{{"entity": "<entity>", "filter": "<OData filter>"}}
+"""
+    if llm_name == "gemini":
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        chat = model.start_chat(history=[])
+        result = chat.send_message(full_prompt)
+        return result.text
+
+    elif llm_name == "openai":
+        from openai import OpenAI
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "You convert user queries into OData filters."},
+                {"role": "user", "content": full_prompt}
+            ],
+            temperature=0.2
+        )
+        return response.choices[0].message.content
+
+    elif llm_name == "claude":
+        client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+        response = client.messages.create(
+            model="claude-3-sonnet-20240229",  # or "claude-3-opus-20240229"
+            max_tokens=1000,
+            temperature=0.2,
+            messages=[
+                {"role": "user", "content": full_prompt}
+            ]
+        )
+        return response.content[0].text
+
+    else:
+        raise ValueError(f"Unsupported LLM: {llm_name}")
+
+# === API: Natural Language Query Endpoint ===
+@app.post("/nl_query")
+def natural_language_query(data: NaturalLanguageQuery):
+    try:
+        # Step 1: Get metadata as context
+        entity_metadata = fetch_entity_metadata(NORTHWIND_URL)
+        context_json = json.dumps({"entities": entity_metadata}, indent=2)
+
+        # Step 2: Call selected LLM
+        response_text = call_llm(data.llm.lower(), context_json, data.prompt)
+
+        # Step 3: Extract JSON from LLM response
+        match = re.search(r'\{.*?\}', response_text, re.DOTALL)
+        if not match:
+            raise HTTPException(status_code=500, detail="No valid JSON found in LLM response")
+
+        parsed = json.loads(match.group(0))
+
+        # Step 4: Run the actual query
+        return run_query(QueryInput(**parsed))
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"{data.llm} error: {str(e)}")
