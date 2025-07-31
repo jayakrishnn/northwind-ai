@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>LLM SAP Assistant</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 40px; background: #f4f4f4; }
+    #output { margin-top: 20px; white-space: pre-wrap; background: #fff; padding: 20px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h2>Ask SAP Data via LLM</h2>
+
+  <label for="llm">Select LLM:</label>
+  <select id="llm">
+    <option value="openai">OpenAI</option>
+    <option value="gemini">Gemini</option>
+    <option value="claude">Claude</option>
+  </select><br><br>
+
+  <label for="question">Enter your question:</label><br>
+  <input type="text" id="question" style="width: 400px;"><br><br>
+
+  <button onclick="sendQuery()">Ask</button>
+
+  <div id="output"></div>
+
+  <script>
+    async function sendQuery() {
+      const question = document.getElementById('question').value;
+      const llm = document.getElementById('llm').value;
+      const response = await fetch('/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, llm })
+      });
+      const data = await response.json();
+      document.getElementById('output').innerText = JSON.stringify(data, null, 2);
+    }
+  </script>
+</body>
+</html>

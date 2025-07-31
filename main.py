@@ -1,5 +1,7 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import requests
 import urllib.parse
@@ -12,6 +14,14 @@ import anthropic
 
 # Initialize FastAPI app
 app = FastAPI()
+
+
+# Mount the static folder
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/")
+def root():
+    return FileResponse("static/index.html")
 
 # CORS Middleware
 app.add_middleware(
