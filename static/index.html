@@ -1,52 +1,333 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>LLM SAP Assistant Dashboard</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8" />
+  <title>LLM SAP Assistant</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f4f6f9;
+      margin: 0;
+      padding: 0;
+    }
+
+    header {
+      background: #1f2937;
+      color: white;
+      padding: 20px;
+      text-align: center;
+      font-size: 1.6rem;
+      font-weight: bold;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: auto;
+      padding: 30px;
+    }
+
+    select, input, button {
+      padding: 10px;
+      font-size: 16px;
+      margin-top: 10px;
+      width: 100%;
+      box-sizing: border-box;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      background-color: #2563eb;
+      color: white;
+      border: none;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+
+    button:hover {
+      background-color: #1e40af;
+    }
+
+    .tabs {
+      display: flex;
+      margin-top: 20px;
+      border-bottom: 2px solid #ccc;
+    }
+
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      border: 1px solid #ccc;
+      border-bottom: none;
+      background: #eee;
+      margin-right: 5px;
+      border-top-left-radius: 8px;
+      border-top-right-radius: 8px;
+    }
+
+    .tab.active {
+      background: white;
+      font-weight: bold;
+    }
+
+    .tab-content {
+      display: none;
+      padding: 20px;
+      background: white;
+      border: 1px solid #ccc;
+      border-radius: 0 0 8px 8px;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 8px;
+      border-bottom: 1px solid #ddd;
+    }
+
+    #kpi-summary {
+      margin: 20px 0;
+      font-weight: bold;
+      color: #444;
+    }
+
+    .loading {
+      margin-top: 20px;
+      font-weight: bold;
+      color: #888;
+    }
+
+    .chart-controls {
+      margin-top: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .chart-controls label {
+      font-weight: bold;
+      margin-top: 10px;
+    }
+
+    .highlight-select {
+      border: 2px solid #2563eb;
+      background: #eef4ff;
+    }
+  </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex flex-col items-center justify-center p-6">
-  <div class="bg-white shadow-xl rounded-xl w-full max-w-2xl p-8">
-    <h1 class="text-2xl font-bold mb-6 text-center text-gray-800">🔍 LLM SAP Assistant</h1>
+<body>
+  <header>LLM SAP Assistant</header>
+  <div class="container">
+    <label for="llm">Select LLM:</label>
+    <select id="llm">
+      <option value="gemini" selected>Gemini</option>
+      <option value="openai">OpenAI</option>
+      <option value="claude">Claude</option>
+    </select>
 
-    <div class="mb-4">
-      <label for="llm" class="block text-sm font-medium text-gray-700">Select LLM</label>
-      <select id="llm" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500">
-        <option value="gemini" selected>Gemini</option>
-        <option value="openai">OpenAI</option>
-        <option value="claude">Claude</option>
-      </select>
+    <label for="question">Ask your question:</label>
+    <input type="text" id="question" placeholder="e.g., Get all customers in Germany" onkeydown="handleKey(event)">
+    <button onclick="sendQuery()">Ask</button>
+
+    <div class="loading" id="loading" style="display:none;">⏳ Waiting for response...</div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('table')">📋 Table</div>
+      <div class="tab" onclick="switchTab('chart')">📊 Chart</div>
+      <div class="tab" onclick="switchTab('json')">🧾 Raw JSON</div>
     </div>
 
-    <div class="mb-4">
-      <label for="query" class="block text-sm font-medium text-gray-700">Ask your question</label>
-      <input type="text" id="query" placeholder="e.g., What is the latest sales order status?"
-             class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 px-3 py-2" />
+    <!-- Tab Contents -->
+    <div id="table" class="tab-content active"></div>
+
+    <div id="chart" class="tab-content">
+      <div id="chart-controls" class="chart-controls" style="display: none;">
+        <label for="labelField">X-Axis (Label):</label>
+        <select id="labelField" class="highlight-select" onchange="renderChart()"></select>
+
+        <label for="valueField">Y-Axis (Value):</label>
+        <select id="valueField" class="highlight-select" onchange="renderChart()"></select>
+
+        <label for="chartType">Chart Type:</label>
+        <select id="chartType" class="highlight-select" onchange="renderChart()">
+          <option value="bar">Bar</option>
+          <option value="line">Line</option>
+          <option value="pie">Pie</option>
+        </select>
+      </div>
+      <canvas id="resultChart" style="max-width: 800px; margin-top: 20px;"></canvas>
     </div>
 
-    <div class="flex justify-center">
-      <button onclick="sendQuery()"
-              class="bg-blue-600 text-white px-5 py-2 rounded-md hover:bg-blue-700 shadow-md">
-        Ask
-      </button>
+    <div id="json" class="tab-content">
+      <pre id="json-output"></pre>
     </div>
 
-    <div id="output" class="mt-6 bg-gray-50 border rounded-lg p-4 text-gray-800 whitespace-pre-wrap text-sm"></div>
+    <div id="kpi-summary"></div>
   </div>
 
   <script>
-    async function sendQuery() {
-      const query = document.getElementById('query').value;
-      const model = document.getElementById('llm').value;
+    let latestData = [];
+    let chartInstance = null;
 
-      const response = await fetch('/query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, model })
+    function handleKey(e) {
+      if (e.key === 'Enter') sendQuery();
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
+      document.querySelector(`.tab[onclick*="${tabId}"]`).classList.add('active');
+    }
+
+    async function sendQuery() {
+      const question = document.getElementById('question').value;
+      const llm = document.getElementById('llm').value;
+      const loading = document.getElementById('loading');
+
+      latestData = [];
+      loading.style.display = 'block';
+      document.getElementById('table').innerHTML = '';
+      document.getElementById('json-output').textContent = '';
+      document.getElementById('kpi-summary').innerText = '';
+      if (chartInstance) chartInstance.destroy();
+
+      try {
+        const res = await fetch('/query_northwind', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: question, model: llm })
+        });
+
+        const json = await res.json();
+        loading.style.display = 'none';
+
+        const results = json.results?.value || [];
+        latestData = results;
+
+        if (results.length === 0) {
+          document.getElementById('table').innerHTML = "<p>No data found.</p>";
+          return;
+        }
+
+        const filteredData = results.map(obj => {
+          const cleaned = {};
+          for (const key in obj) {
+            if (!key.startsWith("@")) cleaned[key] = obj[key];
+          }
+          return cleaned;
+        });
+
+        renderTable(filteredData);
+        populateChartFields(filteredData);
+        renderKPIs(filteredData);
+        document.getElementById('json-output').textContent = JSON.stringify(results, null, 2);
+      } catch (err) {
+        loading.style.display = 'none';
+        alert("❌ Error: " + err.message);
+      }
+    }
+
+    function renderTable(data) {
+      const tableDiv = document.getElementById('table');
+      const keys = Object.keys(data[0]);
+      let html = `<table><thead><tr>${keys.map(k => `<th>${k}</th>`).join('')}</tr></thead><tbody>`;
+      data.forEach(row => {
+        html += `<tr>${keys.map(k => `<td>${row[k]}</td>`).join('')}</tr>`;
+      });
+      html += `</tbody></table>`;
+      tableDiv.innerHTML = html;
+    }
+
+    function populateChartFields(data) {
+      const labelSelect = document.getElementById('labelField');
+      const valueSelect = document.getElementById('valueField');
+      const keys = Object.keys(data[0]);
+
+      labelSelect.innerHTML = '';
+      valueSelect.innerHTML = '';
+
+      keys.forEach(key => {
+        labelSelect.add(new Option(key, key));
+        valueSelect.add(new Option(key, key));
       });
 
-      const data = await response.json();
-      document.getElementById('output').innerText = JSON.stringify(data, null, 2);
+      labelSelect.value = keys[0];
+      valueSelect.value = keys.find(k => typeof data[0][k] === 'number') || keys[1];
+
+      document.getElementById('chart-controls').style.display = 'flex';
+      renderChart();
+    }
+
+    function renderChart() {
+      const labelKey = document.getElementById("labelField").value;
+      const valueKey = document.getElementById("valueField").value;
+      const chartType = document.getElementById("chartType").value;
+
+      const data = latestData.map(obj => {
+        const cleaned = {};
+        for (const key in obj) {
+          if (!key.startsWith("@")) cleaned[key] = obj[key];
+        }
+        return cleaned;
+      });
+
+      const labels = data.map(item => item[labelKey]);
+      const values = data.map(item => parseFloat(item[valueKey]) || 0);
+
+      const ctx = document.getElementById("resultChart").getContext("2d");
+      if (chartInstance) chartInstance.destroy();
+
+      chartInstance = new Chart(ctx, {
+        type: chartType,
+        data: {
+          labels,
+          datasets: [{
+            label: `${valueKey} by ${labelKey}`,
+            data: values,
+            backgroundColor: [
+              '#3b82f6', '#f87171', '#34d399', '#fbbf24', '#8b5cf6', '#10b981', '#ef4444'
+            ]
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: chartType !== 'pie' }
+          },
+          scales: chartType !== 'pie' ? {
+            y: { beginAtZero: true }
+          } : {}
+        }
+      });
+    }
+
+    function renderKPIs(data) {
+      if (!data || data.length === 0) return;
+      const summaryDiv = document.getElementById("kpi-summary");
+      const keys = Object.keys(data[0]);
+      const numKey = keys.find(k => typeof data[0][k] === 'number' || !isNaN(parseFloat(data[0][k])));
+
+      if (!numKey) return;
+
+      const values = data.map(row => parseFloat(row[numKey])).filter(n => !isNaN(n));
+      const total = values.reduce((a, b) => a + b, 0);
+      const avg = (total / values.length).toFixed(2);
+      const count = values.length;
+
+      //summaryDiv.innerHTML = `🔢 Total: ${total}, 📈 Average: ${avg}, 🔢 Count: ${count}`;
     }
   </script>
 </body>
